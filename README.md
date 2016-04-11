@@ -1,4 +1,4 @@
-
+# Automated-Feeder
 
 ### Required Components (Used in paranthesis)
 * 1x Stepper motor (Nema 17)
