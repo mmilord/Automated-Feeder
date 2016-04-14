@@ -16,7 +16,10 @@ sfr16 TMR3 = 0x94; // Timer3 counter
 //sfr P2 = 0xFF;
 sbit P1_0 = P1^0;
 sbit P1_4 = P1^4;
-char IR, PIR;
+sbit P2_0 = P2^0;
+sbit P2_4 = P2^4;
+//pull out these defines to a header file
+char PIN_IR, PIN_MOTION, PIN_MOTOR_STEP, PIN_MOTOR_DIR;
 
 void main(void)
 {	
@@ -31,23 +34,28 @@ void main(void)
 	P5 = P5 & 0x00;
 	P1_0 = 0xFF;
 	P1_4 = 0xFF;
+	//P2_0 = 0x01;
+	//P2_4 = 0x01;
 
 	while(1)
 	{
-		PIR = P1_0;
-		PIR &= 0x01;
-		IR = P1_4;
-		IR &= 0x01;
+		PIN_MOTION = P1_0;
+		PIN_MOTION &= 0x01;
+		PIN_IR = P1_4;
+		PIN_IR &= 0x01;
 
-		if (IR == 1) {
+		//IR Detected
+		if (PIN_IR == 1) {
 			P5 &= 0x30;
+			Dispense();
 		}
 		else {
 			P5 &= 0x00;
 			P5 ^= 0x30;
 		}
 
-		if (PIR == 1) {
+		//Motion Detected
+		if (PIN_MOTION == 1) {
 			P5 &= 0x00;
 			P5 ^= 0xC0;
 		}
@@ -71,7 +79,7 @@ void Init_Port(void)
 	//P0MDOUT = 0x00;
 	//P1MDOUT |= 0xFF;
 	//P1MDOUT &= 0x7F;
-	//P2MDOUT = 0xFF;
+	P2MDOUT |= 0xFF;
 	//P3MDOUT = 0x00;
 
 	P1MDIN |= 0xFF;
@@ -123,4 +131,9 @@ void Timer3_ISR(void) interrupt 14
 		P5 = P5 & 0x00;
 		P5 = P5 ^ 0x10;
 	}
+}
+
+void Dispense(void)
+{
+	//push motor out
 }
