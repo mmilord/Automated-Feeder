@@ -1,6 +1,4 @@
-#include <compiler_defs.h>
-#include <c8051f020_defs.h>
-//#include <time.h>
+#include "Pinouts.h"
 
 int a = 0;
 
@@ -12,26 +10,14 @@ void Init_Clock(void);
 void Init_Timer3(unsigned int counts);
 void Timer3_ISR(void);
 
-void MotorCN(void);
-
 void Init_Timer0(unsigned int counts);
 void Timer0_ISR(void);
 
 void Init_Timer2(unsigned int counts);
 void Timer2_ISR(void);
 
-sbit P0_2 = P0^2;
-sbit P0_4 = P0^4;
-sbit P1_0 = P1^0;
-sbit P1_4 = P1^4;
-sbit P1_1 = P1^1;
-sbit P1_5 = P1^5;
-sbit P1_7 = P1^7;// Right decimal
-sbit P1_6 = P1^6;// left decimal
 
-char PIN_IR, PIN_MOTION, PIN_MOTOR_STEP, PIN_MOTOR_DIR;
-
-int  i, tickCounter, irTickCount = 0, dspCount = 0;
+int  i, motionTickCount = 0, irTickCount = 0, btnTickCount = 0, dspCount = 0;
 
 
 void main(void)
@@ -43,27 +29,15 @@ void main(void)
 	Init_Clock();
 	Init_Port();
 
-	//PIN_MOTION = P1_4;
-	//PIN_MOTION &= 0x01;
-	PIN_IR = P1_0;
-	PIN_IR &= 0x01;
-	PIN_MOTOR_DIR = P1_5;
-	PIN_MOTOR_STEP = P1_1;
-
-	
 	Init_Timer0(SYSCLK);
-	Init_Timer2(1000);
+	Init_Timer2(SYSCLK);
 	Init_Timer3(SYSCLK);
 
 	EA = 1;
 
-	//PIN_MOTION = 0xFF;
 	PIN_MOTOR_DIR = 0xFF;	//set motor direction to clockwise;
-	
-	P1_7 = 1;
 
-	while(1) {
-	}
+	while(1) { }
 }
 
 void Init_Clock(void)
@@ -79,35 +53,18 @@ void Init_Port(void)
 	XBR0 = 0x04;	//Ports Initialization
 	XBR1 = 0x00;
 	XBR2 = 0x40;
-	P1 |= 0x01;		//enables crossbar & weak pull ups 
-//	P2 |= 0x01;
 
-	//P1MDOUT &= 0x00;
-	//P1MDIN &= 0x00;
-	P1MDOUT |= 0xFF;
-	//P1MDIN |= 0x09;
-	//P1MDOUT &= 0x7F;
 	P2MDOUT = 0xFF;
 		
 	P74OUT = 0x08;
 	P5 &= 0x0F;
 }
 
-void MotorCN(void)
+/**
+ * Update 7 segment output
+ */
+void DisplayUpdate(void)
 {
-	
-	a = 0;
-	while (a < 20) {
-		P1_1 = 0xFF;
-		for (i = 0; i < 500; i++) {
-			;
-		}
-		P1_1 = 0x00;
-		for (i = 0; i < 500; i++) {
-			;
-		}
-		a++;
-	}
 	dspCount++;
 
 	if (dspCount > 0x59)
@@ -123,6 +80,35 @@ void MotorCN(void)
 	P2 &= dspCount;
 }
 
+/**
+ * Step Motor for 34 steps
+ */
+void MotorCN(void)
+{
+	EA = 0;
+	a = 0;
+	while (a < 34) {
+		PIN_MOTOR_STEP = 1;
+		for (i = 0; i < 500; i++) {
+			;
+		}
+		PIN_MOTOR_STEP = 0;
+		for (i = 0; i < 500; i++) {
+			;
+		}
+		a++;
+	}
+
+	//Reset counters and renable timer interrupts
+	btnTickCount = 0;
+	motionTickCount = 0;
+	EIE2 &= ~(0x01);
+	ET0 = 1;
+
+	EA = 1;
+}
+
+
 void Init_Timer0(unsigned int counts)
 {
 	//60 second countdown to motion
@@ -137,24 +123,24 @@ void Init_Timer0(unsigned int counts)
 
 	ET0 = 1;
 
-	tickCounter = 0;
+	motionTickCount = 0;
 }
 void Timer0_ISR(void) interrupt 1
 {
-	tickCounter++;
+	motionTickCount++;
 
-	if(tickCounter > 5000)
+	if(motionTickCount > 25800)
 	{
 		ET0 = 0; //disable timer0 isr
 		EIE2 |= 0x01; //disable timer3 isr
-//		ET3 = 1; //enable timer3 isr
-		tickCounter = 0;
+		motionTickCount = 0;
 	}
 }
 
+
 void Init_Timer2(unsigned int counts)
 {
-	//IR detection, decimal flash on low & button press check
+	//IR detection & button press check
 
 	CKCON = T2CON = 0x00;
 	RCAP2 = counts;
@@ -163,30 +149,34 @@ void Init_Timer2(unsigned int counts)
 	T2CON |= 0x04; //starts Timer2
 
 }
-
 void Timer2_ISR(void) interrupt 5
 {
 
 	T2CON &= ~(0x80);
-	P1 |= 0xFF;
 
-	if((P5 & 0x01) == 0x00)// RESET on Button P5.0
+	if(btnTickCount < 129)
 	{
-		MotorCN();
+		btnTickCount++;
 	}
 
-	if((P1_0 & 0x01) == 1)
+	if((P5 & 0x01) == 0x00 && btnTickCount == 129)// Dispense on Button P5.0
 	{
-		if (irTickCount > 10) {
+		MotorCN();
+		DisplayUpdate();
+	}
+
+	if(PIN_IR == 1)
+	{
+		if (irTickCount > 20) {
 			irTickCount = 0;
 		}
-		else if (irTickCount > 5) {
-			P1 &= ~0x80;
-			P1 &= 0x40; 
+		else if (irTickCount > 10) {
+			DEC_LEFT = 1;
+			DEC_RIGHT = 0; 
 		}
 		else if (irTickCount > 0) {
-			P1 &= 0x80;
-			P1 &= ~0x40;
+			DEC_RIGHT = 1;
+			DEC_LEFT = 0;
 		}
 
 		irTickCount++;
@@ -205,23 +195,18 @@ void Init_Timer3(unsigned int counts)
 
 	TMR3 = 0xFFFF;	//-- set to reload immediately
 
-	//EIE2 |= 0x01; 	//-- enable Timer3 interrupts
-
 	TMR3CN |= 0x04; //-- start Timer3 by setting TR3
 					// (TMR3CN.2) to 1
 
 }
 void Timer3_ISR(void) interrupt 14
 {	
-//	PIN_MOTION &= 0x01;
-	//Motion Detected
-	if ((P1_4 & 0x01) == 1) {
-		//P5 &= 0x00;
-		//P5 ^= 0xC0;
+	//If Motion Detected
+	if (PIN_MOTION == 1) {
 		MotorCN();
+		DisplayUpdate();
 		EIE2 &= ~(0x01); //disable timer3 isr
 		ET0 = 1; //enable timer0 isr
-		//TCON &= ~(0x80); //reset timer0 isr
 	}
 }
 

@@ -29,3 +29,9 @@
 
 
 wiringPi
+8051/cyglink.txt
+*.#1
+*.#2
+*.#3
+*.LST
+*.M51
